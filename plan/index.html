@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgentScore Dashboard</title>
+  
+  <!-- Load React and ReactDOM (Development versions for better error messages) -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  
+  <!-- Load Babel Standalone to compile JSX and ES Modules on the fly -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #08080a;
+      color: #e0e0e0;
+    }
+    
+    .nav-bar {
+      display: flex;
+      gap: 16px;
+      padding: 16px 28px;
+      background: #0d1117;
+      border-bottom: 1px solid #1a1a2e;
+      align-items: center;
+    }
+    
+    .nav-logo {
+      font-family: 'DM Mono', monospace;
+      font-weight: 700;
+      font-size: 14px;
+      color: #f4845f;
+      margin-right: 20px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .nav-btn {
+      background: transparent;
+      color: #888;
+      border: 1px solid transparent;
+      padding: 10px 18px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .nav-btn:hover {
+      color: #e0e0e0;
+      background: #161b22;
+    }
+
+    .nav-btn.active {
+      background: #1f6feb;
+      color: #ffffff;
+      border-color: #3fb950;
+      box-shadow: 0 0 10px rgba(31, 111, 235, 0.2);
+    }
+    
+    #content {
+      padding: 0px;
+    }
+
+    .error-box {
+      background: #f8514922;
+      border: 1px solid #f85149;
+      color: #ff7b72;
+      padding: 20px;
+      margin: 40px;
+      border-radius: 8px;
+      font-family: monospace;
+    }
+
+    /* Responsive Styles */
+    @media (max-width: 768px) {
+      .nav-bar {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 16px;
+      }
+      
+      .resp-grid-3 {
+        grid-template-columns: 1fr !important;
+      }
+      
+      .resp-flex-row {
+        flex-direction: column !important;
+      }
+      
+      .resp-layout {
+        flex-direction: column !important;
+      }
+      
+      .resp-sidebar {
+        width: auto !important;
+        border-right: none !important;
+        border-bottom: 1px solid #151518 !important;
+        flex-direction: row !important;
+        overflow-x: auto !important;
+        padding: 16px !important;
+        gap: 12px !important;
+      }
+      
+      .resp-sidebar-btn {
+        width: auto !important;
+        flex: 0 0 auto !important;
+      }
+      
+      .resp-grid-2 {
+        grid-template-columns: 1fr !important;
+      }
+
+      .resp-padding {
+        padding: 16px !important;
+      }
+    }
+  </style>
+
+  <script>
+    // Mock a CommonJS environment so that Babel's transformed modules can find React.
+    // The JSX files use: import { useState } from "react";
+    window.require = function(moduleName) {
+      if (moduleName === 'react') return window.React;
+      if (moduleName === 'react-dom') return window.ReactDOM;
+      throw new Error(`Module ${moduleName} not found by virtual CommonJS loader`);
+    };
+  </script>
+</head>
+<body>
+  <!-- The application mounts here -->
+  <div id="root"></div>
+
+  <!-- Main Application Script -->
+  <script type="text/babel">
+    const { useState, useEffect } = window.React;
+
+    function App() {
+      // Manage current view and loaded components dynamically
+      const [view, setView] = useState('plan');
+      const [modules, setModules] = useState({ plan: null, launch: null });
+      const [error, setError] = useState(null);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        // Asynchronously fetch, transpile, and mount the raw .jsx files 
+        async function loadAllModules() {
+          try {
+            await Promise.all([
+              loadModule('plan', './90-day-execution-plan.jsx'),
+              loadModule('launch', './launch-strategy.jsx')
+            ]);
+            setLoading(false);
+          } catch (err) {
+            console.error(err);
+            if (err.message.includes('fetch')) {
+              setError("Failed to fetch files. Are you accessing this via file:// ? You need to run a local web server, e.g., 'python3 -m http.server'");
+            } else {
+              setError(err.toString());
+            }
+          }
+        }
+
+        async function loadModule(key, url) {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`HTTP ${res.status} when fetching ${url}`);
+          
+          const rawCode = await res.text();
+          
+          // Use Babel in the browser to compile JSX to standard React.createElement calls
+          // and to transform ES "import/export" down to CommonJS statements
+          const transformed = Babel.transform(rawCode, {
+            presets: ['react', 'env'],
+            plugins: ['transform-modules-commonjs']
+          }).code;
+
+          // Sandbox the transformed strict CommonJS code
+          const exports = {};
+          const module = { exports };
+          
+          // Eval the code in an isolated functional scope where `require`, `exports`, and `module` exist
+          const factory = new Function('require', 'exports', 'module', transformed);
+          factory(window.require, exports, module);
+
+          // Return the default export (the main React Component)
+          setModules(prev => ({ ...prev, [key]: module.exports.default }));
+        }
+
+        loadAllModules();
+      }, []);
+
+      if (error) {
+        return (
+          <div className="error-box">
+            <h3>Configuration Error</h3>
+            <p>{error}</p>
+          </div>
+        );
+      }
+
+      if (loading) {
+        return <div style={{ padding: "40px", color: "#888" }}>Compiling JSX modules on the fly...</div>;
+      }
+
+      // Render the active component dynamically
+      const PlanComponent = modules.plan;
+      const LaunchComponent = modules.launch;
+
+      return (
+        <div>
+          <nav className="nav-bar">
+            <span className="nav-logo">AgentScore UI</span>
+            <button 
+              className={`nav-btn ${view === 'plan' ? 'active' : ''}`} 
+              onClick={() => setView('plan')}
+            >
+              90-Day Execution Plan
+            </button>
+            <button 
+              className={`nav-btn ${view === 'launch' ? 'active' : ''}`} 
+              onClick={() => setView('launch')}
+            >
+              Launch Playbook
+            </button>
+          </nav>
+
+          <main id="content">
+            {view === 'plan' && <PlanComponent />}
+            {view === 'launch' && <LaunchComponent />}
+          </main>
+        </div>
+      );
+    }
+
+    // Render App
+    const container = document.getElementById('root');
+    const root = ReactDOM.createRoot(container);
+    root.render(<App />);
+  </script>
+</body>
+</html>
