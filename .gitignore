@@ -1,0 +1,14 @@
+.env
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.pytest_cache/
+htmlcov/
+*.md
+!README.md
+!ROADMAP.md
+!TODO.md
+!docs/*.md
